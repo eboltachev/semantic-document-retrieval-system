@@ -41,20 +41,29 @@ export function connectStream(
   handlers: Partial<Record<StreamEvent, (payload: any) => void>>,
 ): () => void {
   const stream = new EventSource(path)
+  let isTerminal = false
   ;(['status', 'token', 'sources', 'done', 'error'] as StreamEvent[]).forEach((eventName) => {
     stream.addEventListener(eventName, (event) => {
       const payload = JSON.parse((event as MessageEvent).data)
       handlers[eventName]?.(payload)
       if (eventName === 'done' || eventName === 'error') {
+        isTerminal = true
         stream.close()
       }
     })
   })
 
   stream.onerror = () => {
+    if (isTerminal || stream.readyState === EventSource.CLOSED) {
+      return
+    }
     handlers.error?.({ detail: 'Соединение SSE прервано' })
+    isTerminal = true
     stream.close()
   }
 
-  return () => stream.close()
+  return () => {
+    isTerminal = true
+    stream.close()
+  }
 }

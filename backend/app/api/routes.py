@@ -59,12 +59,13 @@ async def start_rebuild(
     if state["indexing_running"]:
         raise HTTPException(status_code=409, detail="Индексация уже запущена")
 
+    state["indexing_running"] = True
+    state["index_ready"] = False
+
     task_id = stream_registry.create()
 
     async def run() -> None:
         async with index_lock:
-            state["indexing_running"] = True
-            state["index_ready"] = False
             service = IndexService(settings, store, ai)
             try:
                 await stream_registry.push(task_id, "status", {"message": "Запуск индексации"})

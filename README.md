@@ -11,6 +11,15 @@ docker compose up -d --build
 
 Откройте `http://localhost:5001`.
 
+## Проверка после запуска
+
+```bash
+curl http://localhost:5001/api/health
+```
+
+> `127.0.0.1:8000` не открыт наружу намеренно: backend доступен только во внутренней docker-сети.
+> Внешняя точка входа только одна — `http://localhost:5001`.
+
 ## Архитектура
 
 - `backend` — FastAPI + Playwright crawler + PyMuPDF + OpenSearch + OpenAI-compatible API.
