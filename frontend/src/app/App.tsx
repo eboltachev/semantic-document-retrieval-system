@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { connectStream, createIndexTask, createSearchTask, fetchState, SourceItem } from '../lib/api'
+import { connectStream, createIndexTask, createSearchTask, fetchPublicConfig, fetchState, SourceItem } from '../lib/api'
 
 export function App() {
   const [query, setQuery] = useState('')
@@ -11,6 +11,7 @@ export function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [indexReady, setIndexReady] = useState(false)
   const [error, setError] = useState('')
+  const [sourceUrl, setSourceUrl] = useState('URL для парсинга (по умолчанию берется из переменной окружения)')
 
   useEffect(() => {
     fetchState()
@@ -19,6 +20,11 @@ export function App() {
         setIndexReady(s.index_ready)
       })
       .catch(() => setError('Не удалось получить состояние сервиса'))
+    fetchPublicConfig()
+      .then((cfg) => {
+        if (cfg.src_base_url) setSourceUrl(cfg.src_base_url)
+      })
+      .catch(() => undefined)
   }, [])
 
   const canSearch = useMemo(() => indexReady && !isIndexing && !isSearching, [indexReady, isIndexing, isSearching])
@@ -105,16 +111,19 @@ export function App() {
       <section className="container">
         <h1>Semantic Docs Search</h1>
         <div className="actions panel">
-          <button onClick={handleIndex} disabled={isIndexing}>
-            {isIndexing ? 'Индексация...' : 'Индексация'}
-          </button>
+          <div className="search-row">
+            <input value={sourceUrl} readOnly />
+            <button className="btn-index" onClick={handleIndex} disabled={isIndexing}>
+              {isIndexing ? 'Индексация...' : 'Индексация'}
+            </button>
+          </div>
           <form className="search-row" onSubmit={handleSearch}>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Введите запрос по документации"
+              placeholder="Введите запрос"
             />
-            <button type="submit" disabled={!canSearch || !query.trim()}>
+            <button className="btn-search" type="submit" disabled={!canSearch || !query.trim()}>
               {isSearching ? 'Поиск...' : 'Поиск'}
             </button>
           </form>

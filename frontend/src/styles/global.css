@@ -67,6 +67,16 @@ button {
   cursor: pointer;
 }
 
+.btn-index {
+  border-color: #d92d20;
+  background: #d92d20;
+}
+
+.btn-search {
+  border-color: #16a34a;
+  background: #16a34a;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;

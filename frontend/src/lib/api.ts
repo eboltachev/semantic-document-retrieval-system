@@ -36,6 +36,12 @@ export async function fetchState(): Promise<{ indexing_running: boolean; index_r
   return res.json()
 }
 
+export async function fetchPublicConfig(): Promise<{ src_base_url?: string }> {
+  const res = await fetch('/api/config/public')
+  if (!res.ok) throw new Error('Не удалось получить публичную конфигурацию')
+  return res.json()
+}
+
 export function connectStream(
   path: string,
   handlers: Partial<Record<StreamEvent, (payload: any) => void>>,
