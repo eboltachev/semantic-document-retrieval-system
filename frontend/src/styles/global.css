@@ -77,6 +77,10 @@ button {
   background: #16a34a;
 }
 
+.action-btn {
+  width: 170px;
+}
+
 button:disabled {
   opacity: 0.5;
   cursor: not-allowed;

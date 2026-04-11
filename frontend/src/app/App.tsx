@@ -113,7 +113,7 @@ export function App() {
         <div className="actions panel">
           <div className="search-row">
             <input value={sourceUrl} readOnly />
-            <button className="btn-index" onClick={handleIndex} disabled={isIndexing}>
+            <button className="action-btn btn-index" onClick={handleIndex} disabled={isIndexing}>
               {isIndexing ? 'Индексация...' : 'Индексация'}
             </button>
           </div>
@@ -123,7 +123,7 @@ export function App() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Введите запрос"
             />
-            <button className="btn-search" type="submit" disabled={!canSearch || !query.trim()}>
+            <button className="action-btn btn-search" type="submit" disabled={!canSearch || !query.trim()}>
               {isSearching ? 'Поиск...' : 'Поиск'}
             </button>
           </form>
