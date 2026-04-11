@@ -1,4 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { connectStream, createIndexTask, createSearchTask, fetchState, SourceItem } from '../lib/api'
 
 export function App() {
@@ -21,12 +22,24 @@ export function App() {
   }, [])
 
   const canSearch = useMemo(() => indexReady && !isIndexing && !isSearching, [indexReady, isIndexing, isSearching])
-  const answerWithSources = useMemo(() => {
-    if (!answer) return 'Ответ появится здесь в потоковом режиме'
-    if (!sources.length) return answer
-    const sourceLines = sources.map((item) => `- [${item.title}](${item.url}) — ${item.preview}`)
-    return `${answer}\n\nИсточники:\n${sourceLines.join('\n')}`
-  }, [answer, sources])
+  const outputMarkdown = useMemo(() => {
+    if (!answer) {
+      return currentStatus || 'Ожидание действия'
+    }
+    if (!sources.length) {
+      return answer
+    }
+    const uniq: SourceItem[] = []
+    const seen = new Set<string>()
+    for (const source of sources) {
+      const key = `${source.title}|${source.url}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      uniq.push(source)
+    }
+    const numberedSources = uniq.map((item, idx) => `${idx + 1}. [${item.title}](${item.url})`)
+    return `${answer}\n\n${numberedSources.join('\n')}`
+  }, [answer, currentStatus, sources])
 
   async function handleIndex() {
     setError('')
@@ -111,13 +124,7 @@ export function App() {
         {error && <div className="error">{error}</div>}
 
         <section className="panel answer">
-          <h3>Текущий вывод</h3>
-          <p>{currentStatus || 'Ожидание действия'}</p>
-        </section>
-
-        <section className="panel answer">
-          <h3>Ответ</h3>
-          <p>{answerWithSources}</p>
+          <ReactMarkdown>{outputMarkdown}</ReactMarkdown>
         </section>
       </section>
     </main>
