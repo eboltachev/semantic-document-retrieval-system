@@ -48,7 +48,7 @@ export function App() {
       uniq.push(source)
     }
     const numberedSources = uniq.map((item, idx) => `${idx + 1}. [${item.title}](${item.url})`)
-    return `${answer}\n\n${numberedSources.join('\n')}`
+    return `${answer}\n\nИсточники:\n${numberedSources.join('\n')}`
   }, [answer, currentStatus, indexReady, sources])
 
   async function handleIndex() {

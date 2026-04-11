@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from urllib.parse import urlparse
 
 from app.core.config import Settings
 from app.services.ai_client import OpenAICompatibleClient
@@ -27,6 +28,26 @@ class SearchService:
             docs[doc_id] = hit
         sorted_ids = sorted(scores, key=lambda d: scores[d], reverse=True)
         return [docs[i] for i in sorted_ids]
+
+    def _derive_source_title(self, source: dict) -> str:
+        base_title = clean_text(source.get("title", ""), 140)
+        text = clean_text(source.get("text", ""), 400)
+        first_line = ""
+        for line in text.split("\n"):
+            candidate = line.strip()
+            if len(candidate) > 4:
+                first_line = candidate
+                break
+
+        if first_line and first_line.lower() != base_title.lower():
+            return first_line[:140]
+        if base_title:
+            return base_title
+
+        path = urlparse(source.get("url", "")).path.strip("/")
+        if path:
+            return path.rsplit("/", 1)[-1].replace("-", " ").replace("_", " ")[:140]
+        return "Источник"
 
     async def run(self, query: str, event_cb):
         await event_cb("status", {"message": "Проверяю состояние индекса"})
@@ -60,6 +81,7 @@ class SearchService:
 
         context_parts = []
         sources = []
+        seen_sources: set[str] = set()
         total = 0
         for hit in top_hits:
             source = hit["_source"]
@@ -68,9 +90,14 @@ class SearchService:
                 break
             total += len(text)
             context_parts.append(f"[{len(context_parts)+1}] {source['title']}\n{text}")
+            source_title = self._derive_source_title(source)
+            source_key = f"{source_title}|{source['url']}"
+            if source_key in seen_sources:
+                continue
+            seen_sources.add(source_key)
             sources.append(
                 {
-                    "title": source["title"],
+                    "title": source_title,
                     "url": source["url"],
                     "preview": text[:220],
                 }
