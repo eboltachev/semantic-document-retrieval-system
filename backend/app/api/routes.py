@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
-from app.schemas.indexing import AppStateResponse, TaskCreateResponse
+from app.schemas.indexing import AppStateResponse, IndexRebuildRequest, TaskCreateResponse
 from app.schemas.search import SearchRequest
 from app.services.ai_client import OpenAICompatibleClient
 from app.services.indexer import IndexService
@@ -52,6 +52,7 @@ async def public_config(settings: Settings = Depends(get_settings)) -> dict[str,
 
 @router.post("/index/rebuild", response_model=TaskCreateResponse)
 async def start_rebuild(
+    request: IndexRebuildRequest,
     settings: Settings = Depends(get_settings),
     store: OpenSearchStore = Depends(get_store),
     ai: OpenAICompatibleClient = Depends(get_ai),
@@ -66,7 +67,7 @@ async def start_rebuild(
 
     async def run() -> None:
         async with index_lock:
-            service = IndexService(settings, store, ai)
+            service = IndexService(settings, store, ai, src_base_url=request.src_base_url)
             try:
                 await stream_registry.push(task_id, "status", {"message": "Запуск индексации"})
                 await service.rebuild(lambda msg: stream_registry.push(task_id, "status", {"message": msg}))

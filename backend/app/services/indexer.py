@@ -21,11 +21,11 @@ class ChunkDoc:
 
 
 class IndexService:
-    def __init__(self, settings: Settings, store: OpenSearchStore, ai: OpenAICompatibleClient):
+    def __init__(self, settings: Settings, store: OpenSearchStore, ai: OpenAICompatibleClient, src_base_url: str | None = None):
         self.settings = settings
         self.store = store
         self.ai = ai
-        self.crawler = SiteCrawler(settings)
+        self.crawler = SiteCrawler(settings, src_base_url=src_base_url)
 
     async def rebuild(self, status_cb) -> None:
         await status_cb("Удаляю старый индекс")

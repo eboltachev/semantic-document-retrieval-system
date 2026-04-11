@@ -6,8 +6,12 @@ export interface SourceItem {
   preview: string
 }
 
-export async function createIndexTask(): Promise<string> {
-  const res = await fetch('/api/index/rebuild', { method: 'POST' })
+export async function createIndexTask(srcBaseUrl: string): Promise<string> {
+  const res = await fetch('/api/index/rebuild', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ src_base_url: srcBaseUrl }),
+  })
   if (!res.ok) {
     const body = await res.json()
     throw new Error(body.detail ?? 'Не удалось запустить индексацию')

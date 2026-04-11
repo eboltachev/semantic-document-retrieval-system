@@ -29,6 +29,9 @@ export function App() {
 
   const canSearch = useMemo(() => indexReady && !isIndexing && !isSearching, [indexReady, isIndexing, isSearching])
   const outputMarkdown = useMemo(() => {
+    if (!indexReady) {
+      return ''
+    }
     if (!answer) {
       return currentStatus || 'Ожидание действия'
     }
@@ -45,7 +48,7 @@ export function App() {
     }
     const numberedSources = uniq.map((item, idx) => `${idx + 1}. [${item.title}](${item.url})`)
     return `${answer}\n\n${numberedSources.join('\n')}`
-  }, [answer, currentStatus, sources])
+  }, [answer, currentStatus, indexReady, sources])
 
   async function handleIndex() {
     setError('')
@@ -53,7 +56,7 @@ export function App() {
     setIsIndexing(true)
     setIndexReady(false)
     try {
-      const taskId = await createIndexTask()
+      const taskId = await createIndexTask(sourceUrl.trim())
       connectStream(`/api/index/stream?task_id=${taskId}`, {
         status: (p) => setCurrentStatus(p.message ?? ''),
         done: () => {
@@ -109,10 +112,10 @@ export function App() {
   return (
     <main className="page">
       <section className="container">
-        <h1>Semantic Docs Search</h1>
+        <h1>Интеллектуальная система поиска информации в корпоративной документации</h1>
         <div className="actions panel">
           <div className="search-row">
-            <input value={sourceUrl} readOnly />
+            <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
             <button className="action-btn btn-index" onClick={handleIndex} disabled={isIndexing}>
               {isIndexing ? 'Индексация...' : 'Индексация'}
             </button>
@@ -132,9 +135,11 @@ export function App() {
 
         {error && <div className="error">{error}</div>}
 
-        <section className="panel answer">
-          <ReactMarkdown>{outputMarkdown}</ReactMarkdown>
-        </section>
+        {outputMarkdown && (
+          <section className="panel answer">
+            <ReactMarkdown>{outputMarkdown}</ReactMarkdown>
+          </section>
+        )}
       </section>
     </main>
   )

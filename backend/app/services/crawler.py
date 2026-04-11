@@ -24,9 +24,9 @@ class CrawledDocument:
 
 
 class SiteCrawler:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, src_base_url: str | None = None):
         self.settings = settings
-        self.base_url = self._normalize_url(settings.src_base_url)
+        self.base_url = self._normalize_url(src_base_url or settings.src_base_url)
         self.base_host = urlparse(self.base_url).netloc
 
     def _normalize_url(self, url: str) -> str:
