@@ -1,12 +1,9 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
-import { StatusList } from '../components/StatusList'
-import { Sources } from '../components/Sources'
 import { connectStream, createIndexTask, createSearchTask, fetchState, SourceItem } from '../lib/api'
 
 export function App() {
   const [query, setQuery] = useState('')
-  const [indexStatuses, setIndexStatuses] = useState<string[]>([])
-  const [searchStatuses, setSearchStatuses] = useState<string[]>([])
+  const [currentStatus, setCurrentStatus] = useState('')
   const [answer, setAnswer] = useState('')
   const [sources, setSources] = useState<SourceItem[]>([])
   const [isIndexing, setIsIndexing] = useState(false)
@@ -24,27 +21,36 @@ export function App() {
   }, [])
 
   const canSearch = useMemo(() => indexReady && !isIndexing && !isSearching, [indexReady, isIndexing, isSearching])
+  const answerWithSources = useMemo(() => {
+    if (!answer) return 'Ответ появится здесь в потоковом режиме'
+    if (!sources.length) return answer
+    const sourceLines = sources.map((item) => `- [${item.title}](${item.url}) — ${item.preview}`)
+    return `${answer}\n\nИсточники:\n${sourceLines.join('\n')}`
+  }, [answer, sources])
 
   async function handleIndex() {
     setError('')
-    setIndexStatuses([])
+    setCurrentStatus('')
     setIsIndexing(true)
     setIndexReady(false)
     try {
       const taskId = await createIndexTask()
       connectStream(`/api/index/stream?task_id=${taskId}`, {
-        status: (p) => setIndexStatuses((prev) => [...prev, p.message]),
+        status: (p) => setCurrentStatus(p.message ?? ''),
         done: () => {
           setIsIndexing(false)
           setIndexReady(true)
+          setCurrentStatus('')
         },
         error: (p) => {
           setError(p.detail ?? 'Ошибка индексации')
           setIsIndexing(false)
+          setCurrentStatus('')
         },
       })
     } catch (e) {
       setIsIndexing(false)
+      setCurrentStatus('')
       setError((e as Error).message)
     }
   }
@@ -54,24 +60,29 @@ export function App() {
     const value = query.trim()
     if (!value) return
     setError('')
-    setSearchStatuses([])
+    setCurrentStatus('')
     setAnswer('')
     setSources([])
     setIsSearching(true)
     try {
       const taskId = await createSearchTask(value)
       connectStream(`/api/search/stream?task_id=${taskId}`, {
-        status: (p) => setSearchStatuses((prev) => [...prev, p.message]),
+        status: (p) => setCurrentStatus(p.message ?? ''),
         token: (p) => setAnswer((prev) => prev + p.text),
         sources: (p) => setSources(p.items ?? []),
-        done: () => setIsSearching(false),
+        done: () => {
+          setIsSearching(false)
+          setCurrentStatus('')
+        },
         error: (p) => {
           setError(p.detail ?? 'Ошибка поиска')
           setIsSearching(false)
+          setCurrentStatus('')
         },
       })
     } catch (e) {
       setIsSearching(false)
+      setCurrentStatus('')
       setError((e as Error).message)
     }
   }
@@ -99,15 +110,15 @@ export function App() {
 
         {error && <div className="error">{error}</div>}
 
-        <StatusList title="Статусы индексации" items={indexStatuses} />
-        <StatusList title="Статусы поиска" items={searchStatuses} />
+        <section className="panel answer">
+          <h3>Текущий вывод</h3>
+          <p>{currentStatus || 'Ожидание действия'}</p>
+        </section>
 
         <section className="panel answer">
           <h3>Ответ</h3>
-          <p>{answer || 'Ответ появится здесь в потоковом режиме'}</p>
+          <p>{answerWithSources}</p>
         </section>
-
-        <Sources items={sources} />
       </section>
     </main>
   )
