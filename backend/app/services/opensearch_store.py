@@ -53,7 +53,7 @@ class OpenSearchStore:
                     "embedding": {
                         "type": "knn_vector",
                         "dimension": embedding_dims,
-                        "method": {"name": "hnsw", "space_type": "cosinesimil", "engine": "nmslib"},
+                        "method": {"name": "hnsw", "space_type": "cosinesimil", "engine": "faiss"},
                     },
                 }
             },
