@@ -69,8 +69,15 @@ async def start_rebuild(
         async with index_lock:
             service = IndexService(settings, store, ai, src_base_url=request.src_base_url)
             try:
-                await stream_registry.push(task_id, "status", {"message": "Запуск индексации"})
-                await service.rebuild(lambda msg: stream_registry.push(task_id, "status", {"message": msg}))
+                await stream_registry.push(task_id, "status", {"message": "Запуск индексации", "progress": 1})
+
+                async def emit_status(message: str, progress: int | None = None) -> None:
+                    payload: dict[str, str | int] = {"message": message}
+                    if progress is not None:
+                        payload["progress"] = progress
+                    await stream_registry.push(task_id, "status", payload)
+
+                await service.rebuild(emit_status)
                 state["index_ready"] = True
                 await stream_registry.push(task_id, "done", {"ok": True})
             except Exception as exc:

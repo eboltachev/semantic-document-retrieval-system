@@ -12,6 +12,7 @@ export function App() {
   const [indexReady, setIndexReady] = useState(false)
   const [error, setError] = useState('')
   const [sourceUrl, setSourceUrl] = useState('URL для парсинга (по умолчанию берется из переменной окружения)')
+  const [indexProgress, setIndexProgress] = useState(0)
 
   useEffect(() => {
     fetchState()
@@ -54,24 +55,33 @@ export function App() {
     setError('')
     setCurrentStatus('')
     setIsIndexing(true)
+    setIndexProgress(0)
     setIndexReady(false)
     try {
       const taskId = await createIndexTask(sourceUrl.trim())
       connectStream(`/api/index/stream?task_id=${taskId}`, {
-        status: (p) => setCurrentStatus(p.message ?? ''),
+        status: (p) => {
+          setCurrentStatus(p.message ?? '')
+          if (typeof p.progress === 'number') {
+            setIndexProgress(Math.max(0, Math.min(100, p.progress)))
+          }
+        },
         done: () => {
           setIsIndexing(false)
+          setIndexProgress(100)
           setIndexReady(true)
           setCurrentStatus('')
         },
         error: (p) => {
           setError(p.detail ?? 'Ошибка индексации')
           setIsIndexing(false)
+          setIndexProgress(0)
           setCurrentStatus('')
         },
       })
     } catch (e) {
       setIsIndexing(false)
+      setIndexProgress(0)
       setCurrentStatus('')
       setError((e as Error).message)
     }
@@ -117,20 +127,20 @@ export function App() {
           <div className="search-row">
             <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
             <button className="action-btn btn-index" onClick={handleIndex} disabled={isIndexing}>
-              {isIndexing ? 'Индексация...' : 'Индексация'}
+              {isIndexing ? `Индексация ${indexProgress}%` : 'Индексация'}
             </button>
           </div>
           <form className="search-row" onSubmit={handleSearch}>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Введите запрос"
+              placeholder={isIndexing ? 'Поиск станет доступен после успешной индексации.' : 'Введите запрос'}
+              disabled={isIndexing}
             />
             <button className="action-btn btn-search" type="submit" disabled={!canSearch || !query.trim()}>
               {isSearching ? 'Поиск...' : 'Поиск'}
             </button>
           </form>
-          {!indexReady && <p className="muted">Поиск станет доступен после успешной индексации.</p>}
         </div>
 
         {error && <div className="error">{error}</div>}

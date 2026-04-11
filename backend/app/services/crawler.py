@@ -131,7 +131,7 @@ class SiteCrawler:
         visited: set[str] = set()
         queue: list[str] = []
 
-        await status_cb("Краулинг документов")
+        await status_cb("Краулинг документов", 12)
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
@@ -159,6 +159,8 @@ class SiteCrawler:
                     if url in visited or not self._is_same_domain(url):
                         continue
                     visited.add(url)
+                    crawl_progress = 12 + int((len(visited) / max(1, self.settings.max_pages)) * 38)
+                    await status_cb("Краулинг документов", min(50, crawl_progress))
 
                     if self._get_extension(url) in PDF_EXTENSIONS:
                         pdf_doc = await self._try_download_pdf(client, url)
