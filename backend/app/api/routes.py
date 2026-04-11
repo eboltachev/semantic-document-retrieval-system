@@ -90,7 +90,11 @@ async def index_stream(task_id: str):
 
     async def event_generator():
         while True:
-            payload = await task.queue.get()
+            try:
+                payload = await asyncio.wait_for(task.queue.get(), timeout=10.0)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
             if task.done and payload == "":
                 break
             if payload:
@@ -136,7 +140,11 @@ async def search_stream(task_id: str):
 
     async def event_generator():
         while True:
-            payload = await task.queue.get()
+            try:
+                payload = await asyncio.wait_for(task.queue.get(), timeout=10.0)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
             if task.done and payload == "":
                 break
             if payload:
