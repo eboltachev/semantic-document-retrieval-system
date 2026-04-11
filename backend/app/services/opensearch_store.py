@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from typing import Any
+from urllib.parse import urlparse
 
 from opensearchpy import OpenSearch, helpers
 
@@ -11,10 +12,15 @@ from app.core.config import Settings
 class OpenSearchStore:
     def __init__(self, settings: Settings):
         self.settings = settings
+        raw_host = settings.vector_storage_host.strip()
+        parsed = urlparse(raw_host if "://" in raw_host else f"//{raw_host}")
+        host = parsed.hostname or raw_host.replace("https://", "").replace("http://", "")
+        use_ssl = parsed.scheme == "https"
+        port = parsed.port or settings.vector_storage_port
         self.client = OpenSearch(
-            hosts=[{"host": settings.vector_storage_host, "port": settings.vector_storage_port}],
+            hosts=[{"host": host, "port": port}],
             http_auth=(settings.vector_storage_username, settings.vector_storage_password),
-            use_ssl=False,
+            use_ssl=use_ssl,
             verify_certs=False,
             ssl_assert_hostname=False,
             ssl_show_warn=False,
