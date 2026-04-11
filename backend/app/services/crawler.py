@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import io
-from collections import deque
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse, urlunparse
 
 import fitz
 import httpx
-from playwright.async_api import Browser, async_playwright
+from playwright.async_api import Page, async_playwright
 
 from app.core.config import Settings
 from app.utils.text import clean_text
+
+PDF_EXTENSIONS = {".pdf"}
 
 
 @dataclass
@@ -25,12 +26,12 @@ class CrawledDocument:
 class SiteCrawler:
     def __init__(self, settings: Settings):
         self.settings = settings
-        self.base = settings.src_base_url
-        self.base_host = urlparse(self.base).netloc
+        self.base_url = self._normalize_url(settings.src_base_url)
+        self.base_host = urlparse(self.base_url).netloc
 
     def _normalize_url(self, url: str) -> str:
-        parsed = urlparse(url)
-        cleaned = parsed._replace(fragment="", query=parsed.query)
+        parsed = urlparse(url.strip())
+        cleaned = parsed._replace(fragment="")
         normalized = urlunparse(cleaned)
         if normalized.endswith("/") and len(normalized) > len(f"{parsed.scheme}://{parsed.netloc}/"):
             normalized = normalized[:-1]
@@ -39,85 +40,152 @@ class SiteCrawler:
     def _is_same_domain(self, url: str) -> bool:
         return urlparse(url).netloc == self.base_host
 
-    async def _extract_pdf(self, client: httpx.AsyncClient, url: str, parent: str | None) -> CrawledDocument | None:
-        response = await client.get(url, follow_redirects=True, timeout=30.0)
-        response.raise_for_status()
-        doc = fitz.open(stream=io.BytesIO(response.content), filetype="pdf")
-        text = "\n".join(page.get_text("text") for page in doc)
-        cleaned = clean_text(text, max_len=120_000)
-        if not cleaned:
-            return None
-        title = url.split("/")[-1] or "PDF"
-        return CrawledDocument(url=url, title=title, text=cleaned, source_type="pdf", parent_url=parent)
+    def _get_extension(self, url: str) -> str:
+        path = urlparse(url).path.lower()
+        return path[path.rfind(".") :] if "." in path else ""
 
-    async def _extract_html(self, browser: Browser, url: str, parent: str | None) -> tuple[CrawledDocument | None, list[str]]:
-        page = await browser.new_page()
-        links: list[str] = []
+    def _extract_pdf_text(self, pdf_bytes: bytes) -> str:
+        text_parts: list[str] = []
+        with fitz.open(stream=io.BytesIO(pdf_bytes), filetype="pdf") as doc:
+            for page in doc:
+                text_parts.append(page.get_text("text"))
+        return clean_text("\n".join(text_parts), max_len=120_000)
+
+    async def _try_download_pdf(self, client: httpx.AsyncClient, url: str) -> CrawledDocument | None:
         try:
-            await page.goto(url, wait_until="networkidle", timeout=60_000)
-            await page.wait_for_timeout(self.settings.page_wait_ms)
+            resp = await client.get(url, timeout=20.0, follow_redirects=True)
+            if resp.status_code != 200:
+                return None
+            if "application/pdf" not in resp.headers.get("content-type", "").lower():
+                return None
+            text = self._extract_pdf_text(resp.content)
+            if not text:
+                return None
+            title = urlparse(url).path.rsplit("/", 1)[-1] or "PDF document"
+            return CrawledDocument(url=url, title=title, text=text, source_type="pdf")
+        except Exception:
+            return None
+
+    async def _extract_links_from_page(self, page: Page) -> list[str]:
+        hrefs = await page.eval_on_selector_all("a[href]", "(els) => els.map(a => a.href).filter(Boolean)")
+        result: list[str] = []
+        seen: set[str] = set()
+        for href in hrefs:
+            normalized = self._normalize_url(href)
+            if self._is_same_domain(normalized) and normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return result
+
+    async def _get_rendered_title(self, page: Page) -> str:
+        try:
             title = await page.title()
-            text = await page.evaluate(
-                """
-                () => {
-                  const selectors = ['main', 'article', '.content', '.markdown-body', 'body'];
-                  for (const sel of selectors) {
-                    const el = document.querySelector(sel);
-                    if (el && el.innerText && el.innerText.trim().length > 0) {
-                      return el.innerText;
-                    }
-                  }
-                  return document.body ? document.body.innerText : '';
-                }
-                """
-            )
-            if not title:
-                h1 = await page.query_selector("h1")
-                title = (await h1.inner_text()) if h1 else url
-            raw_links = await page.eval_on_selector_all("a[href]", "els => els.map(e => e.getAttribute('href'))")
-            for href in raw_links:
-                if not href:
-                    continue
-                joined = urljoin(url, href)
-                normalized = self._normalize_url(joined)
-                if self._is_same_domain(normalized):
-                    links.append(normalized)
-            cleaned = clean_text(text, max_len=120_000)
-            if not cleaned:
-                return None, links
-            return CrawledDocument(url=url, title=clean_text(title, 300), text=cleaned, source_type="html", parent_url=parent), links
-        finally:
-            await page.close()
+            if title and title.strip():
+                return clean_text(title, 300)
+        except Exception:
+            pass
+        try:
+            h1 = page.locator("h1").first
+            if await h1.count() > 0:
+                text = await h1.text_content(timeout=2000)
+                if text and text.strip():
+                    return clean_text(text, 300)
+        except Exception:
+            pass
+        return "Document"
+
+    async def _get_rendered_text(self, page: Page) -> str:
+        selectors = [
+            "main",
+            "article",
+            ".content",
+            ".markdown-section",
+            "section.content",
+            "body",
+        ]
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                if await locator.count() > 0:
+                    text = await locator.first.inner_text(timeout=2000)
+                    cleaned = clean_text(text, 120_000)
+                    if len(cleaned) > 80:
+                        return cleaned
+            except Exception:
+                continue
+        return ""
+
+    async def _click_docs_button_if_present(self, page: Page) -> None:
+        for text in ["Ознакомиться с документацией", "Documentation", "Docs"]:
+            try:
+                locator = page.get_by_text(text, exact=False)
+                if await locator.count() > 0:
+                    await locator.first.click(timeout=3000)
+                    await page.wait_for_timeout(self.settings.page_wait_ms)
+                    return
+            except Exception:
+                continue
 
     async def crawl(self, status_cb) -> list[CrawledDocument]:
+        docs: list[CrawledDocument] = []
         visited: set[str] = set()
-        queue: deque[tuple[str, str | None]] = deque([(self._normalize_url(self.base), None)])
-        collected: list[CrawledDocument] = []
+        queue: list[str] = []
 
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+        await status_cb("Краулинг документов")
+
+        async with async_playwright() as playwright:
+            browser = await playwright.chromium.launch(
+                headless=True,
+                args=["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+            )
+            context = await browser.new_context(viewport={"width": 1440, "height": 2200}, ignore_https_errors=True)
+            page = await context.new_page()
+
+            await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60_000)
+            await page.wait_for_timeout(self.settings.page_wait_ms)
+            await self._click_docs_button_if_present(page)
+
+            current_url = self._normalize_url(page.url)
+            try:
+                first_links = await self._extract_links_from_page(page)
+            except Exception:
+                first_links = []
+
+            queue = [current_url, *first_links]
+
             async with httpx.AsyncClient() as client:
-                while queue and len(collected) < self.settings.max_pages:
-                    url, parent = queue.popleft()
-                    if url in visited:
+                while queue and len(visited) < self.settings.max_pages:
+                    url = self._normalize_url(queue.pop(0))
+                    if url in visited or not self._is_same_domain(url):
                         continue
                     visited.add(url)
-                    await status_cb(f"Краулинг: {url}")
-                    try:
-                        if url.lower().endswith(".pdf"):
-                            pdf_doc = await self._extract_pdf(client, url, parent)
-                            if pdf_doc:
-                                collected.append(pdf_doc)
-                            continue
 
-                        doc, links = await self._extract_html(browser, url, parent)
-                        if doc:
-                            collected.append(doc)
-                        for link in links:
-                            if link not in visited:
-                                queue.append((link, url))
-                    except Exception:
-                        await status_cb(f"Пропуск страницы из-за ошибки: {url}")
+                    if self._get_extension(url) in PDF_EXTENSIONS:
+                        pdf_doc = await self._try_download_pdf(client, url)
+                        if pdf_doc:
+                            docs.append(pdf_doc)
                         continue
+
+                    try:
+                        await page.goto(url, wait_until="domcontentloaded", timeout=45_000)
+                        await page.wait_for_timeout(self.settings.page_wait_ms)
+                    except Exception:
+                        continue
+
+                    title = await self._get_rendered_title(page)
+                    text = await self._get_rendered_text(page)
+                    if text and len(text) > 30:
+                        docs.append(CrawledDocument(url=url, title=title, text=text, source_type="html"))
+
+                    try:
+                        new_links = await self._extract_links_from_page(page)
+                    except Exception:
+                        new_links = []
+                    for link in new_links:
+                        if link not in visited and link not in queue:
+                            queue.append(link)
+
+            await context.close()
             await browser.close()
-        return collected
+
+        return docs
