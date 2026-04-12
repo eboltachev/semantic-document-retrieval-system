@@ -104,6 +104,29 @@ button:disabled {
   line-height: 1.5;
 }
 
+.answer-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.answer table {
+  width: 100%;
+  min-width: 360px;
+  border-collapse: collapse;
+}
+
+.answer th,
+.answer td {
+  border: 1px solid #d0d5dd;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.answer th {
+  background: #f9fafb;
+}
+
 .error {
   background: #fef3f2;
   color: #b42318;
