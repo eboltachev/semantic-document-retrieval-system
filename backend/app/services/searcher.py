@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from urllib.parse import urlparse
 
 from app.core.config import Settings
@@ -30,6 +31,10 @@ class SearchService:
         return [docs[i] for i in sorted_ids]
 
     def _derive_source_title(self, source: dict) -> str:
+        section_title = clean_text(source.get("section_title", ""), 140)
+        if section_title:
+            return section_title
+
         base_title = clean_text(source.get("title", ""), 140)
         text = clean_text(source.get("text", ""), 400)
         first_line = ""
@@ -48,6 +53,11 @@ class SearchService:
         if path:
             return path.rsplit("/", 1)[-1].replace("-", " ").replace("_", " ")[:140]
         return "Источник"
+
+    def _make_source_key(self, source_title: str, source_url: str) -> str:
+        normalized_title = re.sub(r"\W+", " ", source_title.lower()).strip()
+        normalized_title = re.sub(r"\s+", " ", normalized_title)
+        return f"{source_url}|{normalized_title}"
 
     async def run(self, query: str, event_cb):
         await event_cb("status", {"message": "Проверяю состояние индекса"})
@@ -91,7 +101,7 @@ class SearchService:
             total += len(text)
             context_parts.append(f"[{len(context_parts)+1}] {source['title']}\n{text}")
             source_title = self._derive_source_title(source)
-            source_key = f"{source_title}|{source['url']}"
+            source_key = self._make_source_key(source_title, source["url"])
             if source_key in seen_sources:
                 continue
             seen_sources.add(source_key)

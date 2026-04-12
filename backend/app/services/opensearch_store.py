@@ -47,6 +47,7 @@ class OpenSearchStore:
                     "chunk_id": {"type": "keyword"},
                     "url": {"type": "keyword"},
                     "title": {"type": "text"},
+                    "section_title": {"type": "text"},
                     "source_type": {"type": "keyword"},
                     "chunk_index": {"type": "integer"},
                     "text": {"type": "text"},

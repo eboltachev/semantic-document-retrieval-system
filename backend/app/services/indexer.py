@@ -7,7 +7,7 @@ from app.services.ai_client import OpenAICompatibleClient
 from app.services.crawler import SiteCrawler
 from app.services.opensearch_store import OpenSearchStore
 from app.utils.hash import make_chunk_id
-from app.utils.text import clean_text, split_paragraph_chunks
+from app.utils.text import clean_text, extract_section_title, split_paragraph_chunks
 
 
 @dataclass
@@ -15,6 +15,7 @@ class ChunkDoc:
     chunk_id: str
     url: str
     title: str
+    section_title: str
     source_type: str
     chunk_index: int
     text: str
@@ -50,6 +51,7 @@ class IndexService:
                         chunk_id=make_chunk_id(doc.url, i, text),
                         url=doc.url,
                         title=doc.title,
+                        section_title=extract_section_title(text, doc.title),
                         source_type=doc.source_type,
                         chunk_index=i,
                         text=text,
@@ -78,6 +80,7 @@ class IndexService:
                         "chunk_id": chunk.chunk_id,
                         "url": chunk.url,
                         "title": chunk.title,
+                        "section_title": chunk.section_title,
                         "source_type": chunk.source_type,
                         "chunk_index": chunk.chunk_index,
                         "text": chunk.text,
