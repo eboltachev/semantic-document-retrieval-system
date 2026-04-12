@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 import re
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from app.core.config import Settings
 from app.services.ai_client import OpenAICompatibleClient
@@ -54,10 +54,19 @@ class SearchService:
             return path.rsplit("/", 1)[-1].replace("-", " ").replace("_", " ")[:140]
         return "Источник"
 
+    def _canonicalize_source_url(self, source_url: str) -> str:
+        parsed = urlparse(source_url)
+        cleaned = parsed._replace(query="", fragment="")
+        canonical = urlunparse(cleaned)
+        if canonical.endswith("/") and len(canonical) > len(f"{parsed.scheme}://{parsed.netloc}/"):
+            canonical = canonical[:-1]
+        return canonical
+
     def _make_source_key(self, source_title: str, source_url: str) -> str:
         normalized_title = re.sub(r"\W+", " ", source_title.lower()).strip()
         normalized_title = re.sub(r"\s+", " ", normalized_title)
-        return f"{source_url}|{normalized_title}"
+        canonical_url = self._canonicalize_source_url(source_url)
+        return f"{canonical_url}|{normalized_title}"
 
     async def run(self, query: str, event_cb):
         await event_cb("status", {"message": "Проверяю состояние индекса"})
@@ -105,10 +114,11 @@ class SearchService:
             if source_key in seen_sources:
                 continue
             seen_sources.add(source_key)
+            canonical_url = self._canonicalize_source_url(source["url"])
             sources.append(
                 {
                     "title": source_title,
-                    "url": source["url"],
+                    "url": canonical_url,
                     "preview": text[:220],
                 }
             )
