@@ -65,17 +65,15 @@ def extract_section_title(text: str, fallback_title: str = "Источник") -
         r"^#{1,6}\s+.+",
         r"^\d+(\.\d+)*[\)\.]?\s+\S+",
         r"^[IVXLCDM]+[\)\.]?\s+\S+",
+        r"^[A-ZА-ЯЁ][^.!?]{2,120}:$",
+        r"^(раздел|подраздел|section|chapter)\s+\d+(\.\d+)*",
     )
 
-    for line in lines[:20]:
+    for line in lines[:40]:
         candidate = re.sub(r"^#{1,6}\s*", "", line).strip()
         if len(candidate) < 3 or len(candidate) > 140:
             continue
         if any(re.match(pattern, line, flags=re.IGNORECASE) for pattern in heading_patterns):
-            return candidate
-        if candidate.endswith((".", ";", "!", "?")):
-            continue
-        if candidate.count(" ") <= 14:
-            return candidate
+            return candidate.rstrip(":")
 
     return fallback_title
