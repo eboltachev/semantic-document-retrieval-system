@@ -54,3 +54,28 @@ def split_paragraph_chunks(text: str, size: int, overlap: int) -> list[str]:
         chunks.append(current)
 
     return [c.strip() for c in chunks if c.strip()]
+
+
+def extract_section_title(text: str, fallback_title: str = "Источник") -> str:
+    lines = [line.strip() for line in (text or "").split("\n") if line.strip()]
+    if not lines:
+        return fallback_title
+
+    heading_patterns = (
+        r"^#{1,6}\s+.+",
+        r"^\d+(\.\d+)*[\)\.]?\s+\S+",
+        r"^[IVXLCDM]+[\)\.]?\s+\S+",
+    )
+
+    for line in lines[:20]:
+        candidate = re.sub(r"^#{1,6}\s*", "", line).strip()
+        if len(candidate) < 3 or len(candidate) > 140:
+            continue
+        if any(re.match(pattern, line, flags=re.IGNORECASE) for pattern in heading_patterns):
+            return candidate
+        if candidate.endswith((".", ";", "!", "?")):
+            continue
+        if candidate.count(" ") <= 14:
+            return candidate
+
+    return fallback_title

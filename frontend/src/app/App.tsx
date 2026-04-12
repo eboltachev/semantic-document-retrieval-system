@@ -42,7 +42,8 @@ export function App() {
     const uniq: SourceItem[] = []
     const seen = new Set<string>()
     for (const source of sources) {
-      const key = `${source.title}|${source.url}`
+      const normalizedTitle = source.title.toLowerCase().replace(/\W+/g, ' ').trim().replace(/\s+/g, ' ')
+      const key = `${source.url}|${normalizedTitle}`
       if (seen.has(key)) continue
       seen.add(key)
       uniq.push(source)
