@@ -2,6 +2,67 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { connectStream, createIndexTask, createSearchTask, fetchPublicConfig, fetchState, SourceItem } from '../lib/api'
 
+type ParsedBlock =
+  | { type: 'markdown'; content: string }
+  | { type: 'table'; headers: string[]; rows: string[][] }
+
+function isTableSeparator(line: string) {
+  const normalized = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  if (!normalized || !normalized.includes('|')) return false
+  return normalized.split('|').every((cell) => /^:?-{3,}:?$/.test(cell.trim()))
+}
+
+function parseTableRow(line: string) {
+  return line
+    .trim()
+    .replace(/^\|/, '')
+    .replace(/\|$/, '')
+    .split('|')
+    .map((cell) => cell.trim())
+}
+
+function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
+  const lines = markdown.split('\n')
+  const blocks: ParsedBlock[] = []
+  const markdownLines: string[] = []
+
+  function flushMarkdown() {
+    const chunk = markdownLines.join('\n').trim()
+    if (chunk) {
+      blocks.push({ type: 'markdown', content: chunk })
+    }
+    markdownLines.length = 0
+  }
+
+  for (let i = 0; i < lines.length; i += 1) {
+    const current = lines[i]
+    const next = lines[i + 1]
+    const isTableHeader = current.includes('|') && typeof next === 'string' && isTableSeparator(next)
+
+    if (!isTableHeader) {
+      markdownLines.push(current)
+      continue
+    }
+
+    flushMarkdown()
+
+    const headers = parseTableRow(current)
+    const rows: string[][] = []
+
+    i += 2
+    while (i < lines.length && lines[i].includes('|')) {
+      rows.push(parseTableRow(lines[i]))
+      i += 1
+    }
+    i -= 1
+
+    blocks.push({ type: 'table', headers, rows })
+  }
+
+  flushMarkdown()
+  return blocks
+}
+
 export function App() {
   const [query, setQuery] = useState('')
   const [currentStatus, setCurrentStatus] = useState('')
@@ -51,6 +112,8 @@ export function App() {
     const numberedSources = uniq.map((item, idx) => `${idx + 1}. [${item.title}](${item.url})`)
     return `${answer}\n\nИсточники:\n${numberedSources.join('\n')}`
   }, [answer, currentStatus, indexReady, sources])
+
+  const outputBlocks = useMemo(() => parseMarkdownBlocks(outputMarkdown), [outputMarkdown])
 
   async function handleIndex() {
     setError('')
@@ -148,7 +211,36 @@ export function App() {
 
         {outputMarkdown && (
           <section className="panel answer">
-            <ReactMarkdown>{outputMarkdown}</ReactMarkdown>
+            {outputBlocks.map((block, idx) =>
+              block.type === 'markdown' ? (
+                <ReactMarkdown key={`md-${idx}`}>{block.content}</ReactMarkdown>
+              ) : (
+                <div className="answer-table-wrap" key={`tbl-${idx}`}>
+                  <table>
+                    <thead>
+                      <tr>
+                        {block.headers.map((header, headerIdx) => (
+                          <th key={headerIdx}>
+                            <ReactMarkdown>{header}</ReactMarkdown>
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {block.rows.map((row, rowIdx) => (
+                        <tr key={rowIdx}>
+                          {row.map((cell, cellIdx) => (
+                            <td key={cellIdx}>
+                              <ReactMarkdown>{cell}</ReactMarkdown>
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ),
+            )}
           </section>
         )}
       </section>
