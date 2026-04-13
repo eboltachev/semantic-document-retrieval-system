@@ -9,16 +9,16 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Откройте `http://localhost:5001`.
+Откройте `http://localhost:${APP_PORT}`.
 
 ## Проверка после запуска
 
 ```bash
-curl http://localhost:5001/api/health
+curl http://localhost:${APP_PORT}/api/health
 ```
 
 > `127.0.0.1:8000` не открыт наружу намеренно: backend доступен только во внутренней docker-сети.
-> Внешняя точка входа только одна — `http://localhost:5001`.
+> Внешняя точка входа только одна — `http://localhost:${APP_PORT}`.
 
 ## Архитектура
 

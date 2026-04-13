@@ -35,7 +35,8 @@ class SearchService:
         base_title = clean_text(source.get("title", ""), 140)
         if section_title:
             if base_title and section_title.lower() != base_title.lower():
-                return f"{base_title} → {section_title}"
+                # return f"{base_title} → {section_title}"
+                return f"{base_title}"
             return section_title
 
         text = clean_text(source.get("text", ""), 400)
