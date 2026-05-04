@@ -6,15 +6,27 @@ export interface SourceItem {
   preview: string
 }
 
-export async function createIndexTask(srcBaseUrl: string): Promise<string> {
+export async function createIndexTask(srcBaseUrl: string, sourceMode: 'crawl' | 'remote_storage' = 'crawl'): Promise<string> {
   const res = await fetch('/api/index/rebuild', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ src_base_url: srcBaseUrl }),
+    body: JSON.stringify({ src_base_url: srcBaseUrl, source_mode: sourceMode }),
   })
   if (!res.ok) {
     const body = await res.json()
     throw new Error(body.detail ?? 'Не удалось запустить индексацию')
+  }
+  const body = await res.json()
+  return body.task_id
+}
+
+export async function createIndexTaskFromFiles(files: File[]): Promise<string> {
+  const form = new FormData()
+  files.forEach((f) => form.append('files', f))
+  const res = await fetch('/api/index/rebuild/files', { method: 'POST', body: form })
+  if (!res.ok) {
+    const body = await res.json()
+    throw new Error(body.detail ?? 'Не удалось запустить индексацию файлов')
   }
   const body = await res.json()
   return body.task_id

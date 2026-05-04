@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { connectStream, createIndexTask, createSearchTask, fetchPublicConfig, fetchState, SourceItem } from '../lib/api'
+import { connectStream, createIndexTask, createIndexTaskFromFiles, createSearchTask, fetchPublicConfig, fetchState, SourceItem } from '../lib/api'
 
 type ParsedBlock =
   | { type: 'markdown'; content: string }
@@ -73,6 +73,10 @@ export function App() {
   const [indexReady, setIndexReady] = useState(false)
   const [error, setError] = useState('')
   const [sourceUrl, setSourceUrl] = useState('URL для парсинга (по умолчанию берется из переменной окружения)')
+  const [urlMode, setUrlMode] = useState<'crawl' | 'remote_storage'>('crawl')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [showUrlModal, setShowUrlModal] = useState(false)
+  const [showFilesModal, setShowFilesModal] = useState(false)
   const [indexProgress, setIndexProgress] = useState(0)
 
   useEffect(() => {
@@ -122,7 +126,7 @@ export function App() {
     setIndexProgress(0)
     setIndexReady(false)
     try {
-      const taskId = await createIndexTask(sourceUrl.trim())
+      const taskId = selectedFiles.length > 0 ? await createIndexTaskFromFiles(selectedFiles) : await createIndexTask(sourceUrl.trim(), urlMode)
       connectStream(`/api/index/stream?task_id=${taskId}`, {
         status: (p) => {
           setCurrentStatus(p.message ?? '')
@@ -132,6 +136,7 @@ export function App() {
         },
         done: () => {
           setIsIndexing(false)
+          setSelectedFiles([])
           setIndexProgress(100)
           setIndexReady(true)
           setCurrentStatus('')
@@ -189,7 +194,8 @@ export function App() {
         <h1>Интеллектуальная система поиска информации в корпоративной документации</h1>
         <div className="actions panel">
           <div className="search-row">
-            <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
+            <button type="button" onClick={() => setShowUrlModal(true)}>Ввести адрес</button>
+            <button type="button" onClick={() => setShowFilesModal(true)}>Выбрать файлы</button>
             <button className="action-btn btn-index" onClick={handleIndex} disabled={isIndexing}>
               {isIndexing ? `Индексация ${indexProgress}%` : 'Индексация'}
             </button>
@@ -244,6 +250,29 @@ export function App() {
           </section>
         )}
       </section>
+      {showUrlModal && (
+        <div className="modal">
+          <div className="panel">
+            <h3>Источник индексации</h3>
+            <select value={urlMode} onChange={(e) => setUrlMode(e.target.value as 'crawl' | 'remote_storage')}>
+              <option value="crawl">Страницы для парсинга</option>
+              <option value="remote_storage">Путь к удаленному хранилищу</option>
+            </select>
+            <input value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} />
+            <button type="button" onClick={() => setShowUrlModal(false)}>Готово</button>
+          </div>
+        </div>
+      )}
+      {showFilesModal && (
+        <div className="modal">
+          <div className="panel">
+            <h3>Выбор файлов</h3>
+            <input type="file" multiple onChange={(e) => setSelectedFiles(Array.from(e.target.files ?? []))} />
+            <div>Выбрано файлов: {selectedFiles.length}</div>
+            <button type="button" onClick={() => setShowFilesModal(false)}>Готово</button>
+          </div>
+        </div>
+      )}
     </main>
   )
 }

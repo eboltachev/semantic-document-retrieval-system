@@ -2,15 +2,19 @@ from __future__ import annotations
 
 import asyncio
 
-from fastapi import APIRouter, Depends, HTTPException
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
 from app.schemas.indexing import AppStateResponse, IndexRebuildRequest, TaskCreateResponse
 from app.schemas.search import SearchRequest
 from app.services.ai_client import OpenAICompatibleClient
+from app.services.crawler import CrawledDocument
 from app.services.indexer import IndexService
 from app.services.opensearch_store import OpenSearchStore
+from app.services.document_loader import ArchiveDocumentLoader
 from app.services.searcher import SearchService
 from app.services.task_stream import StreamRegistry
 
@@ -67,7 +71,7 @@ async def start_rebuild(
 
     async def run() -> None:
         async with index_lock:
-            service = IndexService(settings, store, ai, src_base_url=request.src_base_url)
+            service = IndexService(settings, store, ai, src_base_url=request.src_base_url, source_mode=request.source_mode)
             try:
                 await stream_registry.push(task_id, "status", {"message": "Запуск индексации", "progress": 1})
 
@@ -78,6 +82,63 @@ async def start_rebuild(
                     await stream_registry.push(task_id, "status", payload)
 
                 await service.rebuild(emit_status)
+                state["index_ready"] = True
+                await stream_registry.push(task_id, "done", {"ok": True})
+            except Exception as exc:
+                await stream_registry.push(task_id, "error", {"detail": str(exc)})
+            finally:
+                state["indexing_running"] = False
+                await stream_registry.mark_done(task_id)
+
+    asyncio.create_task(run())
+    return TaskCreateResponse(task_id=task_id)
+
+
+@router.post("/index/rebuild/files", response_model=TaskCreateResponse)
+async def start_rebuild_from_files(
+    files: list[UploadFile] = File(...),
+    settings: Settings = Depends(get_settings),
+    store: OpenSearchStore = Depends(get_store),
+    ai: OpenAICompatibleClient = Depends(get_ai),
+) -> TaskCreateResponse:
+    if state["indexing_running"]:
+        raise HTTPException(status_code=409, detail="Индексация уже запущена")
+    if not files:
+        raise HTTPException(status_code=400, detail="Не выбраны файлы")
+
+    upload_dir = Path("uploads")
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: list[Path] = []
+    for file in files:
+        target = upload_dir / Path(file.filename or "uploaded_file").name
+        content = await file.read()
+        target.write_bytes(content)
+        saved_paths.append(target)
+
+    state["indexing_running"] = True
+    state["index_ready"] = False
+    task_id = stream_registry.create()
+
+    async def run() -> None:
+        async with index_lock:
+            service = IndexService(settings, store, ai)
+            loader = ArchiveDocumentLoader()
+            try:
+                await stream_registry.push(task_id, "status", {"message": "Подготовка загруженных файлов", "progress": 10})
+                crawled_docs = []
+                for p in saved_paths:
+                    for d in loader.load_path(p):
+                        crawled_docs.append(CrawledDocument(url=d.url, title=d.title, text=d.text, source_type=d.source_type))
+                if not crawled_docs:
+                    raise RuntimeError("Не удалось извлечь текст из загруженных файлов")
+
+                async def emit_status(message: str, progress: int | None = None) -> None:
+                    payload: dict[str, str | int] = {"message": message}
+                    if progress is not None:
+                        payload["progress"] = progress
+                    await stream_registry.push(task_id, "status", payload)
+
+                await service.rebuild(emit_status, preloaded_docs=crawled_docs)
                 state["index_ready"] = True
                 await stream_registry.push(task_id, "done", {"ok": True})
             except Exception as exc:
