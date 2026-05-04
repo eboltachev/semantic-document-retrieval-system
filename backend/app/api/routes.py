@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.config import Settings, get_settings
+from app.core.config import allowed_extensions, archive_extensions
 from app.schemas.indexing import AppStateResponse, IndexRebuildRequest, TaskCreateResponse
 from app.schemas.search import SearchRequest
 from app.services.ai_client import OpenAICompatibleClient
@@ -110,7 +111,13 @@ async def start_rebuild_from_files(
     upload_dir.mkdir(parents=True, exist_ok=True)
     saved_paths: list[Path] = []
     for file in files:
-        target = upload_dir / Path(file.filename or "uploaded_file").name
+        original_name = Path(file.filename or "uploaded_file").name
+        lower_name = original_name.lower()
+        ext = ".tar.gz" if lower_name.endswith(".tar.gz") else Path(original_name).suffix.lower()
+        if ext not in allowed_extensions and ext not in archive_extensions:
+            raise HTTPException(status_code=400, detail=f"Формат файла {original_name} не поддерживается")
+
+        target = upload_dir / original_name
         content = await file.read()
         target.write_bytes(content)
         saved_paths.append(target)

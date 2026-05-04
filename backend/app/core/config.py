@@ -29,6 +29,32 @@ class Settings(BaseSettings):
     max_context_chars: int = Field(alias="MAX_CONTEXT_CHARS")
 
 
+allowed_extensions: tuple[str, ...] = (
+    ".pdf",
+    ".docx",
+    ".doc",
+    ".txt",
+    ".md",
+    ".html",
+    ".htm",
+    ".csv",
+    ".json",
+    ".xlsx",
+    ".pptx",
+    ".rtf",
+)
+
+archive_extensions: tuple[str, ...] = (
+    ".zip",
+    ".tar",
+    ".gz",
+    ".tgz",
+    ".tar.gz",
+    ".7z",
+    ".rar",
+)
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
