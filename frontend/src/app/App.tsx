@@ -64,6 +64,7 @@ function parseMarkdownBlocks(markdown: string): ParsedBlock[] {
 }
 
 export function App() {
+  const allowedExtensions = ['.pdf', '.docx', '.doc', '.txt', '.md', '.html', '.htm', '.csv', '.json', '.xlsx', '.pptx', '.rtf', '.zip', '.tar', '.gz', '.tgz', '.tar.gz', '.7z', '.rar']
   const [query, setQuery] = useState('')
   const [currentStatus, setCurrentStatus] = useState('')
   const [answer, setAnswer] = useState('')
@@ -118,6 +119,23 @@ export function App() {
   }, [answer, currentStatus, indexReady, sources])
 
   const outputBlocks = useMemo(() => parseMarkdownBlocks(outputMarkdown), [outputMarkdown])
+
+  function handleFilesChange(filesList: FileList | null) {
+    const files = Array.from(filesList ?? [])
+    const invalid = files.find((file) => {
+      const lower = file.name.toLowerCase()
+      return !allowedExtensions.some((ext) => lower.endsWith(ext))
+    })
+
+    if (invalid) {
+      setSelectedFiles([])
+      setError(`Формат файла ${invalid.name} не поддерживается`)
+      return
+    }
+
+    setError('')
+    setSelectedFiles(files)
+  }
 
   async function handleIndex() {
     setError('')
@@ -269,7 +287,7 @@ export function App() {
         <div className="modal">
           <div className="panel">
             <h3>Выбор файлов</h3>
-            <input type="file" multiple onChange={(e) => setSelectedFiles(Array.from(e.target.files ?? []))} />
+            <input type="file" accept={allowedExtensions.join(',')} multiple onChange={(e) => handleFilesChange(e.target.files)} />
             <div>Выбрано файлов: {selectedFiles.length}</div>
             <button type="button" onClick={() => setShowFilesModal(false)}>Готово</button>
           </div>
