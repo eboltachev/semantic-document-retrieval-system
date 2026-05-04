@@ -122,6 +122,8 @@ export function App() {
   async function handleIndex() {
     setError('')
     setCurrentStatus('')
+    setAnswer('')
+    setSources([])
     setIsIndexing(true)
     setIndexProgress(0)
     setIndexReady(false)
