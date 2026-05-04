@@ -7,6 +7,7 @@ class TaskCreateResponse(BaseModel):
 
 class IndexRebuildRequest(BaseModel):
     src_base_url: str | None = None
+    source_mode: str = "crawl"
 
 
 class AppStateResponse(BaseModel):

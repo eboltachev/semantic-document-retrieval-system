@@ -4,7 +4,8 @@ from dataclasses import dataclass
 
 from app.core.config import Settings
 from app.services.ai_client import OpenAICompatibleClient
-from app.services.crawler import SiteCrawler
+from app.services.crawler import CrawledDocument, SiteCrawler
+from app.services.document_loader import ArchiveDocumentLoader, URLDocumentDownloader
 from app.services.opensearch_store import OpenSearchStore
 from app.utils.hash import make_chunk_id
 from app.utils.text import clean_text, extract_section_title, split_paragraph_chunks
@@ -22,18 +23,38 @@ class ChunkDoc:
 
 
 class IndexService:
-    def __init__(self, settings: Settings, store: OpenSearchStore, ai: OpenAICompatibleClient, src_base_url: str | None = None):
+    def __init__(
+        self,
+        settings: Settings,
+        store: OpenSearchStore,
+        ai: OpenAICompatibleClient,
+        src_base_url: str | None = None,
+        source_mode: str = "crawl",
+    ):
         self.settings = settings
         self.store = store
         self.ai = ai
+        self.source_mode = source_mode
         self.crawler = SiteCrawler(settings, src_base_url=src_base_url)
 
-    async def rebuild(self, status_cb) -> None:
+    async def _load_docs_from_remote_storage(self, url: str) -> list[CrawledDocument]:
+        loader = ArchiveDocumentLoader()
+        downloader = URLDocumentDownloader()
+        raw_docs = await downloader.download_and_load_docs(url, loader)
+        return [CrawledDocument(url=d.url, title=d.title, text=d.text, source_type=d.source_type) for d in raw_docs]
+
+    async def rebuild(self, status_cb, preloaded_docs: list[CrawledDocument] | None = None) -> None:
         await status_cb("Удаляю старый индекс", 5)
         self.store.delete_index()
 
         await status_cb("Краулинг источников", 10)
-        docs = await self.crawler.crawl(status_cb)
+        if preloaded_docs is not None:
+            docs = preloaded_docs
+        elif self.source_mode == "remote_storage":
+            await status_cb("Загрузка файлов по ссылке", 18)
+            docs = await self._load_docs_from_remote_storage(self.crawler.base_url)
+        else:
+            docs = await self.crawler.crawl(status_cb)
         if not docs:
             raise RuntimeError("Краулер не вернул документов")
 
